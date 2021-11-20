@@ -102,7 +102,7 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 	return &data.SessionToken, nil
 }
 
-func getHashFromS2sAPI(idToken string, timestamp int, version string, client *http.Client) (hash *string, errs []error) {
+func getHashFromS2sAPI(idToken string, timestamp int, client *http.Client) (hash *string, errs []error) {
 	reqData := url.Values{
 		"naIdToken": []string{idToken},
 		"timestamp": []string{fmt.Sprint(timestamp)},
@@ -120,7 +120,7 @@ func getHashFromS2sAPI(idToken string, timestamp int, version string, client *ht
 	req.Header = http.Header{
 		"Content-Type":   []string{"application/x-www-form-urlencoded"},
 		"Content-Length": []string{strconv.Itoa(len(reqData.Encode()))},
-		"User-Agent":     []string{"cassdlcmgoiksm/" + version},
+		"User-Agent":     []string{"cassdlcmgoiksm/1.0.2"},
 	}
 
 	resp, err := client.Do(req)
@@ -159,7 +159,7 @@ type flapgAPIDataResult struct {
 	P3 string `json:"p3"`
 }
 
-func callFlapgAPI(idToken string, guid string, timestamp int, fType string, version string, client *http.Client) (*flapgAPIData, []error) {
+func callFlapgAPI(idToken string, guid string, timestamp int, fType string, client *http.Client) (*flapgAPIData, []error) {
 	var errs []error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -170,7 +170,7 @@ func callFlapgAPI(idToken string, guid string, timestamp int, fType string, vers
 		return nil, errs
 	}
 
-	hash, errs2 := getHashFromS2sAPI(idToken, timestamp, version, client)
+	hash, errs2 := getHashFromS2sAPI(idToken, timestamp, client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, errs
@@ -410,10 +410,10 @@ type splatoonTokenS struct {
 	Status int `json:"status"`
 }
 
-func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfoS, guid string, timestamp int, version string, client *http.Client) (*splatoonTokenS, []error) {
+func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfoS, guid string, timestamp int, client *http.Client) (*splatoonTokenS, []error) {
 	var errs []error
 	idToken := idResponse.AccessToken
-	flapgNso, errs2 := callFlapgAPI(idToken, guid, timestamp, "nso", version, client)
+	flapgNso, errs2 := callFlapgAPI(idToken, guid, timestamp, "nso", client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, errs
@@ -487,10 +487,10 @@ type splatoonAccessTokenS struct {
 	Status int `json:"status"`
 }
 
-func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp int, version string, client *http.Client) (*splatoonAccessTokenS, []error) {
+func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp int, client *http.Client) (*splatoonAccessTokenS, []error) {
 	var errs []error
 	idToken := splatoonToken.Result.Webapiservercredential.Accesstoken
-	flapgApp, errs2 := callFlapgAPI(idToken, guid, timestamp, "app", version, client)
+	flapgApp, errs2 := callFlapgAPI(idToken, guid, timestamp, "app", client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, errs
@@ -552,7 +552,7 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 	return &splatoonAccessToken, nil
 }
 
-func getCookie(userLang, sessionToken, version string, client *http.Client) (*string, []error) {
+func getCookie(userLang, sessionToken string, client *http.Client) (*string, []error) {
 	var errs []error
 	timestamp := int(time.Now().Unix())
 	guid := uuid4.New().String()
@@ -576,12 +576,12 @@ func getCookie(userLang, sessionToken, version string, client *http.Client) (*st
 		return nil, errs
 	}
 
-	splatToken, errs2 := getSplatoonToken(userLang, *idResponse, *userInfo, guid, timestamp, version, client)
+	splatToken, errs2 := getSplatoonToken(userLang, *idResponse, *userInfo, guid, timestamp, client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, errs
 	}
-	splatAccess, errs2 := getSplatoonAccessToken(*splatToken, guid, timestamp, version, client)
+	splatAccess, errs2 := getSplatoonAccessToken(*splatToken, guid, timestamp, client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, errs
@@ -681,7 +681,7 @@ func setSessionToken(sessionToken string, client *http.Client) (*string, []error
 }
 
 // GenNewCookie attempts to generate a new cookie in case the provided one is invalid.
-func GenNewCookie(userLang, sessionToken, reason, version string, client *http.Client) (*string, *string, []error) {
+func GenNewCookie(userLang, sessionToken, reason string, client *http.Client) (*string, *string, []error) {
 	var errs []error
 	err := printCookieGenReason(reason)
 	if err != nil {
@@ -707,7 +707,7 @@ func GenNewCookie(userLang, sessionToken, reason, version string, client *http.C
 		errs = append(errs, err)
 		return nil, nil, errs
 	}
-	cookie, errs2 := getCookie(userLang, *seshTok, version, client)
+	cookie, errs2 := getCookie(userLang, *seshTok, client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, nil, errs

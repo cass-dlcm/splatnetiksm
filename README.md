@@ -1,6 +1,8 @@
 SplatNetIksm
 ================
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/cass-dlcm/splatnetiksm.svg)](https://pkg.go.dev/github.com/cass-dlcm/splatnetiksm)
+
 SplatNetIksm is a Go module that obtains the `iksm_session` cookie for use with the Nintendo Switch Online Splatoon 2 libraries.
 
 Adapted from github.com/frozenpandaman/splatnet2statink/iksm.py
@@ -68,7 +70,7 @@ func main() {
 	}
 
 	if viper.GetString("cookie") == "" {
-		sessionToken, cookie, errs := GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", "1.0.0", client)
+		sessionToken, cookie, errs := GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", client)
 		if len(errs) > 0 {
 			log.Panicln(errs)
         }
@@ -99,6 +101,9 @@ func main() {
 }
 
 ```
+
+Basically, just call `GenNewCookie` with the user language, a starting session token, the reason for generating a new token (either `"blank"` or `"auth"`), and a `*http.Client`.
+It'll give you a session token and cookie if it works, or a slice of errors if it doesn't.
 
 ## License
 
