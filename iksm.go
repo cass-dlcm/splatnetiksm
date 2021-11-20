@@ -1,4 +1,4 @@
-package main
+package splatnetiksm
 
 import (
 	"bufio"
