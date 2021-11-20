@@ -25,31 +25,31 @@ import (
 
 var optOutStr = "skip"
 
-func enterCookie() string {
+func enterCookie() (*string, error) {
 	var newCookie string
 
 	if _, err := fmt.Println("Go to the page below to find instructions to obtain your iksm_session cookie:\nhttps://github.com/frozenpandaman/splatnet2statink/wiki/mitmproxy-instructions\nEnter it here: "); err != nil {
-		log.Panicln(err)
+		return nil, err
 	}
 
 	if _, err := fmt.Scanln(&newCookie); err != nil {
-		log.Panicln(err)
+		return nil, err
 	}
 
 	for len(newCookie) != 40 {
 		if _, err := fmt.Println("Cookie is invalid. Please enter it again.\nCookie: "); err != nil {
-			log.Panicln(err)
+			return nil, err
 		}
 
 		if _, err := fmt.Scanln(&newCookie); err != nil {
-			log.Panicln(err)
+			return nil, err
 		}
 	}
 
-	return newCookie
+	return &newCookie, nil
 }
 
-func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *http.Client) interface{} {
+func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *http.Client) (sessionToken *string, errs []error) {
 	bodyMarshalled := strings.NewReader(url.Values{
 		"client_id":                   []string{"71b963c1b7b6d119"},
 		"session_token_code":          []string{sessionTokenCode},
@@ -60,7 +60,8 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://accounts.nintendo.com/connect/1.0.0/api/session_token", bodyMarshalled)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -76,12 +77,13 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
@@ -93,13 +95,14 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 	var data SessionTokenData
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return data.SessionToken
+	return &data.SessionToken, nil
 }
 
-func getHashFromS2sAPI(idToken string, timestamp int, version string, client *http.Client) string {
+func getHashFromS2sAPI(idToken string, timestamp int, version string, client *http.Client) (hash *string, errs []error) {
 	reqData := url.Values{
 		"naIdToken": []string{idToken},
 		"timestamp": []string{fmt.Sprint(timestamp)},
@@ -110,7 +113,8 @@ func getHashFromS2sAPI(idToken string, timestamp int, version string, client *ht
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://elifessler.com/s2s/api/gen2", strings.NewReader(reqData.Encode()))
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -121,12 +125,13 @@ func getHashFromS2sAPI(idToken string, timestamp int, version string, client *ht
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
@@ -136,10 +141,11 @@ func getHashFromS2sAPI(idToken string, timestamp int, version string, client *ht
 
 	var apiResponse S2sAPIHash
 	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return apiResponse.Hash
+	return &apiResponse.Hash, nil
 }
 
 type flapgAPIData struct {
@@ -153,42 +159,52 @@ type flapgAPIDataResult struct {
 	P3 string `json:"p3"`
 }
 
-func callFlapgAPI(idToken string, guid string, timestamp int, fType string, version string, client *http.Client) flapgAPIData {
+func callFlapgAPI(idToken string, guid string, timestamp int, fType string, version string, client *http.Client) (*flapgAPIData, []error) {
+	var errs []error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://flapg.com/ika2/api/login?public", nil)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
+	}
+
+	hash, errs2 := getHashFromS2sAPI(idToken, timestamp, version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
 		"x-token": []string{idToken},
 		"x-time":  []string{fmt.Sprint(timestamp)},
 		"x-guid":  []string{guid},
-		"x-hash":  []string{getHashFromS2sAPI(idToken, timestamp, version, client)},
+		"x-hash":  []string{*hash},
 		"x-ver":   []string{"3"},
 		"x-iid":   []string{fType},
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
 	resultData := flapgAPIData{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&resultData); err != nil && err != errors.New("unexpected end of JSON input") && err != io.EOF {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return resultData
+	return &resultData, nil
 }
 
 type idResponseS struct {
@@ -199,14 +215,16 @@ type idResponseS struct {
 	TokenType   string   `json:"token_type"`
 }
 
-func getIDResponse(userLang string, sessionToken string, client *http.Client) idResponseS {
+func getIDResponse(userLang string, sessionToken string, client *http.Client) (*idResponseS, []error) {
+	var errs []error
 	body, err := json.Marshal(map[string]string{
 		"client_id":     "71b963c1b7b6d119", // Splatoon 2 service
 		"session_token": sessionToken,
 		"grant_type":    "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token",
 	})
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -214,7 +232,8 @@ func getIDResponse(userLang string, sessionToken string, client *http.Client) id
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://accounts.nintendo.com/connect/1.0.0/api/token", bytes.NewReader(body))
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -230,21 +249,22 @@ func getIDResponse(userLang string, sessionToken string, client *http.Client) id
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
-
-	var idResponse idResponseS
-	if err := json.NewDecoder(resp.Body).Decode(&idResponse); err != nil {
-		log.Panicln(err)
+	var idResp idResponseS
+	if err := json.NewDecoder(resp.Body).Decode(&idResp); err != nil {
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return idResponse
+	return &idResp, nil
 }
 
 type userInfoS struct {
@@ -323,13 +343,15 @@ type userInfoS struct {
 	Updatedat int `json:"updatedAt"`
 }
 
-func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) userInfoS {
+func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) (*userInfoS, []error) {
+	var errs []error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.accounts.nintendo.com/2.0.0/users/me", nil)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -344,21 +366,24 @@ func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) u
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
 	var userInfo userInfoS
+
 	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return userInfo
+	return &userInfo, nil
 }
 
 type splatoonTokenS struct {
@@ -385,22 +410,28 @@ type splatoonTokenS struct {
 	Status int `json:"status"`
 }
 
-func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfoS, guid string, timestamp int, version string, client *http.Client) splatoonTokenS {
+func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfoS, guid string, timestamp int, version string, client *http.Client) (*splatoonTokenS, []error) {
+	var errs []error
 	idToken := idResponse.AccessToken
-	flapgNso := callFlapgAPI(idToken, guid, timestamp, "nso", version, client).Result
+	flapgNso, errs2 := callFlapgAPI(idToken, guid, timestamp, "nso", version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
 	bodyJSON, err := json.Marshal(map[string]map[string]interface{}{
 		"parameter": {
-			"f":          flapgNso.F,
-			"naIdToken":  flapgNso.P1,
-			"timestamp":  flapgNso.P2,
-			"requestId":  flapgNso.P3,
+			"f":          flapgNso.Result.F,
+			"naIdToken":  flapgNso.Result.P1,
+			"timestamp":  flapgNso.Result.P2,
+			"requestId":  flapgNso.Result.P3,
 			"naCountry":  userInfo.Country,
 			"naBirthday": userInfo.Birthday,
 			"language":   userInfo.Language,
 		},
 	})
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -408,7 +439,8 @@ func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfo
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api-lp1.znc.srv.nintendo.net/v1/Account/Login", bytes.NewReader(bodyJSON))
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -426,21 +458,24 @@ func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfo
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
 	var splatoonToken splatoonTokenS
+
 	if err := json.NewDecoder(resp.Body).Decode(&splatoonToken); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return splatoonToken
+	return &splatoonToken, nil
 }
 
 type splatoonAccessTokenS struct {
@@ -452,20 +487,26 @@ type splatoonAccessTokenS struct {
 	Status int `json:"status"`
 }
 
-func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp int, version string, client *http.Client) splatoonAccessTokenS {
+func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp int, version string, client *http.Client) (*splatoonAccessTokenS, []error) {
+	var errs []error
 	idToken := splatoonToken.Result.Webapiservercredential.Accesstoken
-	flapgApp := callFlapgAPI(idToken, guid, timestamp, "app", version, client).Result
+	flapgApp, errs2 := callFlapgAPI(idToken, guid, timestamp, "app", version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
 	bodyJSON, err := json.Marshal(map[string]map[string]interface{}{
 		"parameter": {
 			"id":                int64(5741031244955648),
-			"f":                 flapgApp.F,
-			"registrationToken": flapgApp.P1,
-			"timestamp":         flapgApp.P2,
-			"requestId":         flapgApp.P3,
+			"f":                 flapgApp.Result.F,
+			"registrationToken": flapgApp.Result.P1,
+			"timestamp":         flapgApp.Result.P2,
+			"requestId":         flapgApp.Result.P3,
 		},
 	})
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -491,35 +532,59 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
 	var splatoonAccessToken splatoonAccessTokenS
+
 	if err := json.NewDecoder(resp.Body).Decode(&splatoonAccessToken); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
-	return splatoonAccessToken
+	return &splatoonAccessToken, nil
 }
 
-func getCookie(userLang, sessionToken, version string, client *http.Client) string {
+func getCookie(userLang, sessionToken, version string, client *http.Client) (*string, []error) {
+	var errs []error
 	timestamp := int(time.Now().Unix())
 	guid := uuid4.New().String()
-	idResponse := getIDResponse(userLang, sessionToken, client)
-	userInfo := getUserInfo(userLang, idResponse, client)
+	idResponse, errs2 := getIDResponse(userLang, sessionToken, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
+	userInfo, errs2 := getUserInfo(userLang, *idResponse, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://app.splatoon2.nintendo.net/?lang="+userLang, nil)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
+	}
+
+	splatToken, errs2 := getSplatoonToken(userLang, *idResponse, *userInfo, guid, timestamp, version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
+	splatAccess, errs2 := getSplatoonAccessToken(*splatToken, guid, timestamp, version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
 	}
 
 	req.Header = http.Header{
@@ -527,9 +592,7 @@ func getCookie(userLang, sessionToken, version string, client *http.Client) stri
 		"X-IsAppAnalyticsOptedIn": []string{"false"},
 		"Accept":                  []string{"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
 		"Accept-Encoding":         []string{"gzip deflate"},
-		"X-GameWebToken": []string{getSplatoonAccessToken(getSplatoonToken(
-			userLang, idResponse, userInfo, guid, timestamp, version, client,
-		), guid, timestamp, version, client).Result.Accesstoken},
+		"X-GameWebToken": 		[]string{splatAccess.Result.Accesstoken},
 		"Accept-Language":      []string{userLang},
 		"X-IsAnalyticsOptedIn": []string{"false"},
 		"Connection":           []string{"keep-alive"},
@@ -540,99 +603,132 @@ func getCookie(userLang, sessionToken, version string, client *http.Client) stri
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
 		}
 	}()
 
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "iksm_session" {
-			return cookie.Value
+			return &cookie.Value, nil
 		}
 	}
 
-	return ""
+	return nil, errs
 }
 
-func printCookieGenReason(reason string) {
+func printCookieGenReason(reason string) error {
 	if reason == "blank" {
 		if _, err := fmt.Println("Blank cookie."); err != nil {
-			log.Panicln(err)
+			return err
 		}
 	} else if reason == "auth" { // authentication error
 		if _, err := fmt.Println("The stored cookie has expired."); err != nil {
-			log.Panicln(err)
+			return err
 		}
 	} else { // server error or player hasn't battled before
 		if _, err := fmt.Println("Cannot access SplatNet 2 without having played at least one battle online."); err != nil {
-			log.Panicln(err)
+			return err
 		}
 		os.Exit(1)
 	}
+	return nil
 }
 
-func setSessionToken(sessionToken string, client *http.Client) string {
+func setSessionToken(sessionToken string, client *http.Client) (*string, []error) {
+	var errs []error
 	if sessionToken == "" {
 		if _, err := fmt.Println("session_token is blank. Please log in to your Nintendo Account to obtain your session_token."); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
+			return nil, errs
 		}
-		newToken := logIn(client)
+		newToken, errs2 := logIn(client)
+		if len(errs2) > 0 {
+			errs = append(errs, errs2...)
+			return nil, errs
+		}
 		if newToken == nil {
 			if _, err := fmt.Println("There was a problem logging you in. Please try again later."); err != nil {
-				log.Panicln(err)
+				errs = append(errs, err)
+				return nil, errs
 			}
 		} else {
 			if *newToken == optOutStr { // user has opted to manually enter cookie
 				if _, err := fmt.Println("\nYou have opted against automatic cookie generation and must manually input your iksm_session cookie."); err != nil {
-					log.Panicln(err)
+					errs = append(errs, err)
+					return nil, errs
 				}
 			} else {
 				if _, err := fmt.Println("\nWrote session_token to config.txt."); err != nil {
-					log.Panicln(err)
+					errs = append(errs, err)
+					return nil, errs
 				}
 			}
 		}
-		return *newToken
+		return newToken, nil
 	} else if sessionToken == optOutStr {
 		if _, err := fmt.Println("\nYou have opted against automatic cookie generation and must manually input your iksm_session cookie. You may clear this setting by removing \"" + optOutStr + "\" from the session_token field in config.txt."); err != nil {
-			log.Panicln(err)
+			errs = append(errs, err)
+			return nil, errs
 		}
 	}
-	return sessionToken
+	return &sessionToken, nil
 }
 
 // GenNewCookie attempts to generate a new cookie in case the provided one is invalid.
-func GenNewCookie(userLang, sessionToken, reason, version string, client *http.Client) (string, string) {
-	printCookieGenReason(reason)
+func GenNewCookie(userLang, sessionToken, reason, version string, client *http.Client) (*string, *string, []error) {
+	var errs []error
+	err := printCookieGenReason(reason)
+	if err != nil {
+		errs = append(errs, err)
+		return nil, nil, errs
+	}
 
-	newSessionToken := setSessionToken(sessionToken, client)
+	seshTok, errs2 := setSessionToken(sessionToken, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, nil, errs
+	}
 
-	if newSessionToken == optOutStr {
-		newCookie := enterCookie()
-		return optOutStr, newCookie
+	if *seshTok == optOutStr {
+		cookie, err := enterCookie()
+		if err != nil {
+			errs = append(errs, err)
+			return nil, nil, errs
+		}
+		return &optOutStr, cookie, nil
 	}
 	if _, err := fmt.Println("Attempting to generate new cookie..."); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, nil, errs
 	}
-	newCookie := getCookie(userLang, newSessionToken, version, client)
-	return newSessionToken, newCookie
+	cookie, errs2 := getCookie(userLang, *seshTok, version, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, nil, errs
+	}
+	return seshTok, cookie, nil
 }
 
-func logIn(client *http.Client) *string {
+func logIn(client *http.Client) (*string, []error) {
+	var errs []error
 	authStateUnencoded := make([]byte, 36)
 	if _, err := rand.Read(authStateUnencoded); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	authState := base64.RawURLEncoding.EncodeToString(authStateUnencoded)
 	authCodeVerifierUnencoded := make([]byte, 32)
 
 	if _, err := rand.Read(authCodeVerifierUnencoded); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	authCodeVerifier := base64.RawURLEncoding.EncodeToString(authCodeVerifierUnencoded)
@@ -654,7 +750,8 @@ func logIn(client *http.Client) *string {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://accounts.nintendo.com/connect/1.0.0/authorize", strings.NewReader(body.Encode()))
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	req.URL.RawQuery = body.Encode()
@@ -673,15 +770,18 @@ func logIn(client *http.Client) *string {
 	postLogin := req.URL.String()
 
 	if _, err := fmt.Println("Navigate to this URL in your browser:"); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	if _, err := fmt.Println(postLogin); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	if _, err := fmt.Println("Log in, right click the \"Select this account\" button, copy the link address, and paste it below:"); err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		return nil, errs
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -689,7 +789,11 @@ func logIn(client *http.Client) *string {
 	useAccountURL := scanner.Text()
 	re := regexp.MustCompile("de=(.*)&")
 	sessionTokenCode := re.FindAllStringSubmatch(useAccountURL, -1)
-	sessionToken := getSessionToken(sessionTokenCode[0][1], authCodeVerifier, client).(string)
+	sessionToken, errs2 := getSessionToken(sessionTokenCode[0][1], authCodeVerifier, client)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, errs
+	}
 
-	return &sessionToken
+	return sessionToken, nil
 }

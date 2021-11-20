@@ -68,7 +68,10 @@ func main() {
 	}
 
 	if viper.GetString("cookie") == "" {
-		sessionToken, cookie := GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", "1.0.0", client)
+		sessionToken, cookie, errs := GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", "1.0.0", client)
+		if len(errs) > 0 {
+			log.Panicln(errs)
+        }
 		viper.Set("cookie", cookie)
 		viper.Set("session_token", sessionToken)
 		if err := viper.WriteConfig(); err != nil {
