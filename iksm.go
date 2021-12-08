@@ -11,11 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,25 +24,43 @@ import (
 )
 
 var optOutStr = "skip"
+var nsoVersion = "1.14.0"
 
-func enterCookie() (*string, error) {
+func enterCookie() (*string, []error) {
 	var newCookie string
+	errs := []error{errors.New("error in enterCookie:\n")}
 
 	if _, err := fmt.Println("Go to the page below to find instructions to obtain your iksm_session cookie:\nhttps://github.com/frozenpandaman/splatnet2statink/wiki/mitmproxy-instructions\nEnter it here: "); err != nil {
-		return nil, err
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return nil, errs
 	}
 
 	if _, err := fmt.Scanln(&newCookie); err != nil {
-		return nil, err
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return nil, errs
 	}
 
 	for len(newCookie) != 40 {
 		if _, err := fmt.Println("Cookie is invalid. Please enter it again.\nCookie: "); err != nil {
-			return nil, err
+			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+			return nil, errs
 		}
 
 		if _, err := fmt.Scanln(&newCookie); err != nil {
-			return nil, err
+			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+			return nil, errs
 		}
 	}
 
@@ -55,17 +73,20 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 		"session_token_code":          []string{sessionTokenCode},
 		"session_token_code_verifier": []string{strings.ReplaceAll(authCodeVerifier, "=", "")},
 	}.Encode())
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://accounts.nintendo.com/connect/1.0.0/api/session_token", bodyMarshalled)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	req.Header = http.Header{
-		"User-Agent":      []string{"OnlineLounge/1.13.2 NASDKAPI Android"},
+		"User-Agent":      []string{fmt.Sprintf("OnlineLounge/%s NASDKAPI Android", nsoVersion)},
 		"Accept-Language": []string{"en-US"},
 		"Accept":          []string{"application/json"},
 		"Content-Type":    []string{"application/x-www-form-urlencoded"},
@@ -78,12 +99,18 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -96,6 +123,9 @@ func getSessionToken(sessionTokenCode string, authCodeVerifier string, client *h
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -108,12 +138,15 @@ func getHashFromS2sAPI(idToken string, timestamp int, client *http.Client) (hash
 		"timestamp": []string{fmt.Sprint(timestamp)},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://elifessler.com/s2s/api/gen2", strings.NewReader(reqData.Encode()))
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -126,12 +159,18 @@ func getHashFromS2sAPI(idToken string, timestamp int, client *http.Client) (hash
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -142,6 +181,9 @@ func getHashFromS2sAPI(idToken string, timestamp int, client *http.Client) (hash
 	var apiResponse S2sAPIHash
 	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -160,13 +202,16 @@ type flapgAPIDataResult struct {
 }
 
 func callFlapgAPI(idToken string, guid string, timestamp int, fType string, client *http.Client) (*flapgAPIData, []error) {
-	var errs []error
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	errs := []error{errors.New("error in callFlapgAPI")}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://flapg.com/ika2/api/login?public", nil)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -188,12 +233,18 @@ func callFlapgAPI(idToken string, guid string, timestamp int, fType string, clie
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -201,6 +252,9 @@ func callFlapgAPI(idToken string, guid string, timestamp int, fType string, clie
 
 	if err := json.NewDecoder(resp.Body).Decode(&resultData); err != nil && err != errors.New("unexpected end of JSON input") && err != io.EOF {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -224,15 +278,21 @@ func getIDResponse(userLang string, sessionToken string, client *http.Client) (*
 	})
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://accounts.nintendo.com/connect/1.0.0/api/token", bytes.NewReader(body))
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -244,23 +304,32 @@ func getIDResponse(userLang string, sessionToken string, client *http.Client) (*
 		"Content-Length":  []string{"439"},
 		"Accept":          []string{"application/json"},
 		"Connection":      []string{"Keep-Alive"},
-		"User-Agent":      []string{"OnlineLounge/1.13.2 NASDKAPI Android"},
+		"User-Agent":      []string{fmt.Sprintf("OnlineLounge/%s NASDKAPI Android", nsoVersion)},
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 	var idResp idResponseS
 	if err := json.NewDecoder(resp.Body).Decode(&idResp); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -345,17 +414,20 @@ type userInfoS struct {
 
 func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) (*userInfoS, []error) {
 	var errs []error
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.accounts.nintendo.com/2.0.0/users/me", nil)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	req.Header = http.Header{
-		"User-Agent":      []string{"OnlineLounge/1.13.2 NASDKAPI Android"},
+		"User-Agent":      []string{fmt.Sprintf("OnlineLounge/%s NASDKAPI Android", nsoVersion)},
 		"Accept-Language": []string{userLang},
 		"Accept":          []string{"application/json"},
 		"Authorization":   []string{"Bearer " + idResponse.AccessToken},
@@ -367,12 +439,18 @@ func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) (
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -380,6 +458,9 @@ func getUserInfo(userLang string, idResponse idResponseS, client *http.Client) (
 
 	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -411,7 +492,7 @@ type splatoonTokenS struct {
 }
 
 func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfoS, guid string, timestamp int, client *http.Client) (*splatoonTokenS, []error) {
-	var errs []error
+	errs := []error{errors.New("error in getSplatoonToken:\n")}
 	idToken := idResponse.AccessToken
 	flapgNso, errs2 := callFlapgAPI(idToken, guid, timestamp, "nso", client)
 	if len(errs2) > 0 {
@@ -431,24 +512,30 @@ func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfo
 	})
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api-lp1.znc.srv.nintendo.net/v1/Account/Login", bytes.NewReader(bodyJSON))
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	req.Header = http.Header{
 		"Host":             []string{"api-lp1.znc.srv.nintendo.net"},
 		"Accept-Language":  []string{userLang},
-		"User-Agent":       []string{"com.nintendo.znca/1.13.2 (Android/7.1.2)"},
+		"User-Agent":       []string{fmt.Sprintf("com.nintendo.znca/%s (Android/7.1.2)", nsoVersion)},
 		"Accept":           []string{"application/json"},
-		"X-ProductVersion": []string{"1.13.2"},
+		"X-ProductVersion": []string{nsoVersion},
 		"Content-Type":     []string{"application/json; charset=utf-8"},
 		"Connection":       []string{"Keep-Alive"},
 		"Authorization":    []string{"Bearer"},
@@ -459,19 +546,36 @@ func getSplatoonToken(userLang string, idResponse idResponseS, userInfo userInfo
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
+
+	if resp.StatusCode != http.StatusOK {
+		errs = append(errs, fmt.Errorf("error code from webserver: %d\n", resp.StatusCode))
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return nil, errs
+	}
 
 	var splatoonToken splatoonTokenS
 
 	if err := json.NewDecoder(resp.Body).Decode(&splatoonToken); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -488,7 +592,7 @@ type splatoonAccessTokenS struct {
 }
 
 func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp int, client *http.Client) (*splatoonAccessTokenS, []error) {
-	var errs []error
+	errs := []error{errors.New("error in getSplatoonAccessToken:\n")}
 	idToken := splatoonToken.Result.Webapiservercredential.Accesstoken
 	flapgApp, errs2 := callFlapgAPI(idToken, guid, timestamp, "app", client)
 	if len(errs2) > 0 {
@@ -506,22 +610,29 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 	})
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api-lp1.znc.srv.nintendo.net/v2/Game/GetWebServiceToken", bytes.NewReader(bodyJSON))
 	if err != nil {
-		log.Panicln(err)
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return nil, errs
 	}
 
 	req.Header = http.Header{
 		"Host":             []string{"api-lp1.znc.srv.nintendo.net"},
-		"User-Agent":       []string{"com.nintendo.znca/1.13.2 (Android/7.1.2)"},
+		"User-Agent":       []string{fmt.Sprintf("com.nintendo.znca/%s (Android/7.1.2)", nsoVersion)},
 		"Accept":           []string{"application/json"},
-		"X-ProductVersion": []string{"1.13.2"},
+		"X-ProductVersion": []string{nsoVersion},
 		"Content-Type":     []string{"application/json; charset=utf-8"},
 		"Connection":       []string{"Keep-Alive"},
 		"Authorization":    []string{"Bearer " + idToken},
@@ -533,12 +644,18 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -546,6 +663,9 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 
 	if err := json.NewDecoder(resp.Body).Decode(&splatoonAccessToken); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -553,7 +673,7 @@ func getSplatoonAccessToken(splatoonToken splatoonTokenS, guid string, timestamp
 }
 
 func getCookie(userLang, sessionToken string, client *http.Client) (*string, []error) {
-	var errs []error
+	errs := []error{errors.New("error in getCookie:\n")}
 	timestamp := int(time.Now().Unix())
 	guid := uuid4.New().String()
 	idResponse, errs2 := getIDResponse(userLang, sessionToken, client)
@@ -573,6 +693,9 @@ func getCookie(userLang, sessionToken string, client *http.Client) (*string, []e
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://app.splatoon2.nintendo.net/?lang="+userLang, nil)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -592,24 +715,30 @@ func getCookie(userLang, sessionToken string, client *http.Client) (*string, []e
 		"X-IsAppAnalyticsOptedIn": []string{"false"},
 		"Accept":                  []string{"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
 		"Accept-Encoding":         []string{"gzip deflate"},
-		"X-GameWebToken": 		[]string{splatAccess.Result.Accesstoken},
-		"Accept-Language":      []string{userLang},
-		"X-IsAnalyticsOptedIn": []string{"false"},
-		"Connection":           []string{"keep-alive"},
-		"DNT":                  []string{"0"},
-		"User-Agent":           []string{"Mozilla/5.0 (Linux; Android 7.1.2; Pixel Build/NJH47D; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36"},
-		"X-Requested-With":     []string{"com.nintendo.znca"},
+		"X-GameWebToken":          []string{splatAccess.Result.Accesstoken},
+		"Accept-Language":         []string{userLang},
+		"X-IsAnalyticsOptedIn":    []string{"false"},
+		"Connection":              []string{"keep-alive"},
+		"DNT":                     []string{"0"},
+		"User-Agent":              []string{"Mozilla/5.0 (Linux; Android 7.1.2; Pixel Build/NJH47D; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36"},
+		"X-Requested-With":        []string{"com.nintendo.znca"},
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		}
 	}()
 
@@ -622,18 +751,31 @@ func getCookie(userLang, sessionToken string, client *http.Client) (*string, []e
 	return nil, errs
 }
 
-func printCookieGenReason(reason string) error {
+func printCookieGenReason(reason string) []error {
+	errs := []error{errors.New("error in printCookieGenReason:\n")}
 	if reason == "blank" {
 		if _, err := fmt.Println("Blank cookie."); err != nil {
-			return err
+			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+			return errs
 		}
 	} else if reason == "auth" { // authentication error
 		if _, err := fmt.Println("The stored cookie has expired."); err != nil {
-			return err
+			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+			return errs
 		}
 	} else { // server error or player hasn't battled before
 		if _, err := fmt.Println("Cannot access SplatNet 2 without having played at least one battle online."); err != nil {
-			return err
+			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+			return errs
 		}
 		os.Exit(1)
 	}
@@ -641,10 +783,13 @@ func printCookieGenReason(reason string) error {
 }
 
 func setSessionToken(sessionToken string, client *http.Client) (*string, []error) {
-	var errs []error
+	errs := []error{errors.New("error in setSessionToken:\n")}
 	if sessionToken == "" {
 		if _, err := fmt.Println("session_token is blank. Please log in to your Nintendo Account to obtain your session_token."); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 			return nil, errs
 		}
 		newToken, errs2 := logIn(client)
@@ -655,17 +800,26 @@ func setSessionToken(sessionToken string, client *http.Client) (*string, []error
 		if newToken == nil {
 			if _, err := fmt.Println("There was a problem logging you in. Please try again later."); err != nil {
 				errs = append(errs, err)
+				buf := make([]byte, 1<<16)
+				stackSize := runtime.Stack(buf, false)
+				errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 				return nil, errs
 			}
 		} else {
 			if *newToken == optOutStr { // user has opted to manually enter cookie
 				if _, err := fmt.Println("\nYou have opted against automatic cookie generation and must manually input your iksm_session cookie."); err != nil {
 					errs = append(errs, err)
+					buf := make([]byte, 1<<16)
+					stackSize := runtime.Stack(buf, false)
+					errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 					return nil, errs
 				}
 			} else {
 				if _, err := fmt.Println("\nWrote session_token to config.txt."); err != nil {
 					errs = append(errs, err)
+					buf := make([]byte, 1<<16)
+					stackSize := runtime.Stack(buf, false)
+					errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 					return nil, errs
 				}
 			}
@@ -674,6 +828,9 @@ func setSessionToken(sessionToken string, client *http.Client) (*string, []error
 	} else if sessionToken == optOutStr {
 		if _, err := fmt.Println("\nYou have opted against automatic cookie generation and must manually input your iksm_session cookie. You may clear this setting by removing \"" + optOutStr + "\" from the session_token field in config.txt."); err != nil {
 			errs = append(errs, err)
+			buf := make([]byte, 1<<16)
+			stackSize := runtime.Stack(buf, false)
+			errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 			return nil, errs
 		}
 	}
@@ -682,10 +839,10 @@ func setSessionToken(sessionToken string, client *http.Client) (*string, []error
 
 // GenNewCookie attempts to generate a new cookie in case the provided one is invalid.
 func GenNewCookie(userLang, sessionToken, reason string, client *http.Client) (*string, *string, []error) {
-	var errs []error
-	err := printCookieGenReason(reason)
-	if err != nil {
-		errs = append(errs, err)
+	errs := []error{errors.New("error in GenNewCookie:\n")}
+	errs2 := printCookieGenReason(reason)
+	if len(errs2) > 0 {
+		errs = append(errs, errs2...)
 		return nil, nil, errs
 	}
 
@@ -696,15 +853,18 @@ func GenNewCookie(userLang, sessionToken, reason string, client *http.Client) (*
 	}
 
 	if *seshTok == optOutStr {
-		cookie, err := enterCookie()
-		if err != nil {
-			errs = append(errs, err)
+		cookie, errs2 := enterCookie()
+		if len(errs2) > 0 {
+			errs = append(errs, errs2...)
 			return nil, nil, errs
 		}
 		return &optOutStr, cookie, nil
 	}
 	if _, err := fmt.Println("Attempting to generate new cookie..."); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, nil, errs
 	}
 	cookie, errs2 := getCookie(userLang, *seshTok, client)
@@ -716,10 +876,13 @@ func GenNewCookie(userLang, sessionToken, reason string, client *http.Client) (*
 }
 
 func logIn(client *http.Client) (*string, []error) {
-	var errs []error
+	errs := []error{errors.New("error in logIn")}
 	authStateUnencoded := make([]byte, 36)
 	if _, err := rand.Read(authStateUnencoded); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -728,6 +891,9 @@ func logIn(client *http.Client) (*string, []error) {
 
 	if _, err := rand.Read(authCodeVerifierUnencoded); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -745,12 +911,15 @@ func logIn(client *http.Client) (*string, []error) {
 		"theme":                               []string{"login_form"},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://accounts.nintendo.com/connect/1.0.0/authorize", strings.NewReader(body.Encode()))
 	if err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
@@ -771,16 +940,25 @@ func logIn(client *http.Client) (*string, []error) {
 
 	if _, err := fmt.Println("Navigate to this URL in your browser:"); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	if _, err := fmt.Println(postLogin); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
 	if _, err := fmt.Println("Log in, right click the \"Select this account\" button, copy the link address, and paste it below:"); err != nil {
 		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
 		return nil, errs
 	}
 
