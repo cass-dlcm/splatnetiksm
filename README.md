@@ -70,7 +70,7 @@ func main() {
 	}
 
 	if viper.GetString("cookie") == "" {
-		sessionToken, cookie, errs := GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", client)
+		sessionToken, cookie, errs := splatnetiksm.GenNewCookie(viper.GetString("user_lang"), viper.GetString("session_token"), "blank", client)
 		if len(errs) > 0 {
 			log.Panicln(errs)
         }

@@ -20,16 +20,55 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/frankenbeanies/uuid4"
 )
 
 var optOutStr = "skip"
-var nsoVersion = "1.14.0"
+var nsoVersion = ""
+
+func getNSOAppVersion(client *http.Client) []error {
+	errs := []error{}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://play.google.com/store/apps/details?id=com.nintendo.znca&hl=en", nil)
+	if err != nil {
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return errs
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return errs
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}(res.Body)
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		errs = append(errs, err)
+		buf := make([]byte, 1<<16)
+		stackSize := runtime.Stack(buf, false)
+		errs = append(errs, fmt.Errorf("%s", buf[0:stackSize]))
+		return errs
+	}
+	selection := doc.Find(".htlgb").Get(6)
+	nsoVersion = selection.FirstChild.FirstChild.FirstChild.Data
+	return nil
+}
 
 func enterCookie() (*string, []error) {
 	var newCookie string
-	errs := []error{errors.New("error in enterCookie:\n")}
-
+	errs := []error{}
 	if _, err := fmt.Println("Go to the page below to find instructions to obtain your iksm_session cookie:\nhttps://github.com/frozenpandaman/splatnet2statink/wiki/mitmproxy-instructions\nEnter it here: "); err != nil {
 		errs = append(errs, err)
 		buf := make([]byte, 1<<16)
@@ -840,18 +879,19 @@ func setSessionToken(sessionToken string, client *http.Client) (*string, []error
 // GenNewCookie attempts to generate a new cookie in case the provided one is invalid.
 func GenNewCookie(userLang, sessionToken, reason string, client *http.Client) (*string, *string, []error) {
 	errs := []error{errors.New("error in GenNewCookie:\n")}
-	errs2 := printCookieGenReason(reason)
-	if len(errs2) > 0 {
+	if errs2 := getNSOAppVersion(client); len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, nil, errs
 	}
-
+	if errs2 := printCookieGenReason(reason); len(errs2) > 0 {
+		errs = append(errs, errs2...)
+		return nil, nil, errs
+	}
 	seshTok, errs2 := setSessionToken(sessionToken, client)
 	if len(errs2) > 0 {
 		errs = append(errs, errs2...)
 		return nil, nil, errs
 	}
-
 	if *seshTok == optOutStr {
 		cookie, errs2 := enterCookie()
 		if len(errs2) > 0 {
