@@ -759,7 +759,7 @@ func getCookie(userLang, sessionToken string, client *http.Client) (*string, []e
 		"X-IsAnalyticsOptedIn":    []string{"false"},
 		"Connection":              []string{"keep-alive"},
 		"DNT":                     []string{"0"},
-		"User-Agent":              []string{"Mozilla/5.0 (Linux; Android 7.1.2; Pixel Build/NJH47D; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36"},
+		"User-Agent":              []string{"Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Mobile Safari/537.36"},
 		"X-Requested-With":        []string{"com.nintendo.znca"},
 	}
 
@@ -970,7 +970,7 @@ func logIn(client *http.Client) (*string, []error) {
 		"Connection":                []string{"keep-alive"},
 		"Cache-Control":             []string{"max-age=0"},
 		"Upgrade-Insecure-Requests": []string{"1"},
-		"User-Agent":                []string{"Mozilla/5.0 (Linux; Android 7.1.2; Pixel Build/NJH47D; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36"},
+		"User-Agent":                []string{"Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Mobile Safari/537.36"},
 		"Accept":                    []string{"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8n"},
 		"DNT":                       []string{"1"},
 		"Accept-Encoding":           []string{"gzip,deflate,br"},
